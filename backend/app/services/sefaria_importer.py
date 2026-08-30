@@ -25,10 +25,7 @@ def is_importable_license(license_name: str | None) -> bool:
 
 def is_official_merged_export(record: dict) -> bool:
     url = str(record.get("json_url") or "")
-    return (
-        record.get("versionTitle") == "merged"
-        and url.startswith("https://storage.googleapis.com/sefaria-export/")
-    )
+    return record.get("versionTitle") == "merged" and url.startswith("https://storage.googleapis.com/sefaria-export/")
 
 
 def _slugify(value: str) -> str:
@@ -44,8 +41,6 @@ def _flatten_text(node: Any, path: list[int] | None = None):
         for i, child in enumerate(node, 1):
             yield from _flatten_text(child, path + [i])
     elif isinstance(node, dict):
-        # Complex texts sometimes export named nodes. Keep deterministic order and
-        # flatten their textual children without losing the content.
         for child in node.values():
             yield from _flatten_text(child, path)
 
@@ -60,13 +55,7 @@ class SefariaImporter:
             r.raise_for_status()
             return r.json()
 
-    def iter_records(
-        self,
-        *,
-        categories: Iterable[str] | None = None,
-        language: str = "Hebrew",
-        merged_only: bool = True,
-    ):
+    def iter_records(self, *, categories: Iterable[str] | None = None, language: str = "Hebrew", merged_only: bool = True):
         data = self.fetch_index()
         wanted = {c.strip() for c in (categories or []) if c and c.strip()}
         for book in data.get("books", []):
@@ -90,6 +79,23 @@ class SefariaImporter:
                 break
         return results
 
+    def record_exists(self, record: dict) -> bool:
+        title = record.get("title") or ""
+        if not title:
+            return False
+        work = self.db.scalar(select(Work).where(Work.slug == _slugify(title)))
+        if not work:
+            return False
+        language = record.get("language") or "Hebrew"
+        version_title = record.get("versionTitle") or "merged"
+        return self.db.scalar(
+            select(TextVersion.id).where(
+                TextVersion.work_id == work.id,
+                TextVersion.language == language,
+                TextVersion.version_title == version_title,
+            )
+        ) is not None
+
     def import_book_record(self, record: dict, allow_noncommercial: bool = False) -> dict:
         explicit_license = record.get("license")
         official_merged = is_official_merged_export(record)
@@ -97,6 +103,9 @@ class SefariaImporter:
         license_name = explicit_license or (SEFARIA_EXPORT_LICENSE if official_merged else None)
         if not permitted and not allow_noncommercial:
             return {"status": "skipped", "reason": "license_not_approved", "title": record.get("title"), "license": license_name}
+
+        if self.record_exists(record):
+            return {"status": "exists", "title": record.get("title"), "version": record.get("versionTitle")}
 
         url = record.get("json_url")
         if not url:
@@ -125,16 +134,6 @@ class SefariaImporter:
 
         version_title = record.get("versionTitle") or payload.get("versionTitle") or "Sefaria export"
         language = record.get("language") or payload.get("language") or "Hebrew"
-        existing = self.db.scalar(
-            select(TextVersion).where(
-                TextVersion.work_id == work.id,
-                TextVersion.language == language,
-                TextVersion.version_title == version_title,
-            )
-        )
-        if existing:
-            return {"status": "exists", "title": title, "version": version_title}
-
         version = TextVersion(
             work_id=work.id,
             language=language,
@@ -155,19 +154,17 @@ class SefariaImporter:
                 continue
             suffix = ":".join(str(x) for x in path)
             ref = f"{title} {suffix}" if suffix else title
-            batch.append(
-                TextSegment(
-                    version_id=version.id,
-                    ref=ref,
-                    section_title=str(path[0]) if path else None,
-                    level1=path[0] if len(path) > 0 else None,
-                    level2=path[1] if len(path) > 1 else None,
-                    level3=path[2] if len(path) > 2 else None,
-                    position=count,
-                    text=text,
-                    normalized_text=normalize_hebrew(text),
-                )
-            )
+            batch.append(TextSegment(
+                version_id=version.id,
+                ref=ref,
+                section_title=str(path[0]) if path else None,
+                level1=path[0] if len(path) > 0 else None,
+                level2=path[1] if len(path) > 1 else None,
+                level3=path[2] if len(path) > 2 else None,
+                position=count,
+                text=text,
+                normalized_text=normalize_hebrew(text),
+            ))
             count += 1
             if len(batch) >= 1000:
                 self.db.add_all(batch)
@@ -179,18 +176,17 @@ class SefariaImporter:
         self.db.commit()
         return {"status": "imported", "title": title, "segments": count, "license": license_name}
 
-    def bulk_import(
-        self,
-        *,
-        categories: Iterable[str] | None = None,
-        language: str = "Hebrew",
-        max_books: int = 500,
-    ) -> dict:
+    def bulk_import(self, *, categories: Iterable[str] | None = None, language: str = "Hebrew", max_books: int = 500) -> dict:
         summary = {"examined": 0, "imported": 0, "exists": 0, "skipped": 0, "failed": 0, "segments": 0, "errors": []}
+        attempted_new = 0
         for record in self.iter_records(categories=categories, language=language, merged_only=True):
-            if summary["examined"] >= max_books:
-                break
             summary["examined"] += 1
+            if self.record_exists(record):
+                summary["exists"] += 1
+                continue
+            if attempted_new >= max_books:
+                break
+            attempted_new += 1
             try:
                 result = self.import_book_record(record)
                 status = result.get("status")
@@ -201,7 +197,7 @@ class SefariaImporter:
                     summary["exists"] += 1
                 else:
                     summary["skipped"] += 1
-            except Exception as exc:  # continue the large pulse even if one text is malformed
+            except Exception as exc:
                 self.db.rollback()
                 summary["failed"] += 1
                 if len(summary["errors"]) < 50:
