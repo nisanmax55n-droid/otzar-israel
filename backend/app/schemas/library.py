@@ -16,6 +16,10 @@ class SegmentOut(BaseModel):
     id: int
     ref: str
     section_title: str | None
+    level1: int | None
+    level2: int | None
+    level3: int | None
+    position: int
     text: str
     model_config = ConfigDict(from_attributes=True)
 
