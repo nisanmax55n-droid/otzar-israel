@@ -1,16 +1,18 @@
 import {useEffect,useMemo,useState} from 'react'
-import {BookOpen,ChevronLeft,ChevronRight,Library,Moon,ScrollText,Sun} from 'lucide-react'
-import {api,TorahBook,TorahParasha,TorahVerse} from './services/api'
+import {BarChart3,BookOpen,ChevronLeft,ChevronRight,Library,Moon,Search,ScrollText,Sparkles,Sun} from 'lucide-react'
+import {api,SearchHit,Stats,TorahBook,TorahParasha,TorahVerse} from './services/api'
 
-type View='home'|'tanakh'|'torah'|'book'|'parasha'|'bookView'
+type View='home'|'tanakh'|'torah'|'book'|'parasha'|'bookView'|'search'
 
 const homeCategories=[
   ['tanakh','תנ״ך','תורה, נביאים וכתובים'],
   ['mishnah','משנה','שישה סדרי משנה'],
   ['talmud','תלמוד','בבלי וירושלמי'],
-  ['halakha','הלכה','ספרי ההלכה'],
+  ['halakha','הלכה','רמב״ם, טור ושולחן ערוך'],
   ['prayer','תפילה','סידורים, מחזורים ופיוטים'],
   ['midrash','מדרש','מדרשי חז״ל'],
+  ['musar','מוסר','ספרי מוסר ומחשבה'],
+  ['chasidut','חסידות','ספרי חסידות'],
 ]
 
 function heNumber(n:number){
@@ -30,6 +32,9 @@ export default function App(){
   const[view,setView]=useState<View>('home')
   const[dark,setDark]=useState(false)
   const[busy,setBusy]=useState(false)
+  const[stats,setStats]=useState<Stats|null>(null)
+  const[q,setQ]=useState('')
+  const[hits,setHits]=useState<SearchHit[]>([])
   const[books,setBooks]=useState<TorahBook[]>([])
   const[selectedBook,setSelectedBook]=useState<TorahBook|null>(null)
   const[parashot,setParashot]=useState<TorahParasha[]>([])
@@ -39,6 +44,19 @@ export default function App(){
   const[bookVerses,setBookVerses]=useState<TorahVerse[]>([])
 
   useEffect(()=>{document.documentElement.dataset.theme=dark?'dark':'light'},[dark])
+  useEffect(()=>{api.stats().then(setStats).catch(()=>{})},[])
+
+  function openLibrary(){
+    setView('home')
+    setTimeout(()=>document.getElementById('library')?.scrollIntoView({behavior:'smooth'}),0)
+  }
+
+  async function runSearch(e?:React.FormEvent){
+    e?.preventDefault()
+    if(q.trim().length<2)return
+    setBusy(true)
+    try{setHits(await api.search(q.trim()));setView('search')}finally{setBusy(false)}
+  }
 
   async function openTorah(){
     setBusy(true)
@@ -100,14 +118,32 @@ export default function App(){
   return <div className="app">
     <header>
       <button className="brand" onClick={()=>setView('home')}><span className="mark">א</span><span><b>אוצר ישראל</b><small>ארון הספרים היהודי</small></span></button>
-      <nav><button onClick={()=>setView('home')}>בית</button><button onClick={()=>setView('tanakh')}>תנ״ך</button></nav>
+      <nav><button onClick={()=>setView('home')}>בית</button><button onClick={openLibrary}>ספרייה</button><button onClick={()=>{setQ('');setHits([]);setView('search')}}>חיפוש</button></nav>
       <button className="icon" onClick={()=>setDark(!dark)}>{dark?<Sun/>:<Moon/>}</button>
     </header>
 
     <main>
-      {view==='home'&&<section className="page landing">
-        <div className="pageTitle"><span>אוצר ישראל</span><h1>ארון הספרים היהודי</h1><p>נכנסים שכבה אחר שכבה, בצורה מסודרת וברורה.</p></div>
-        <div className="grid homeGrid">{homeCategories.map(([key,title,desc])=><button key={key} className="category" onClick={()=>key==='tanakh'&&setView('tanakh')} disabled={key!=='tanakh'}><BookOpen/><b>{title}</b><span>{desc}</span>{key!=='tanakh'&&<small>בהמשך</small>}</button>)}</div>
+      {view==='home'&&<>
+        <section className="hero">
+          <div className="kicker"><Sparkles size={16}/> כל ארון הספרים היהודי במקום אחד</div>
+          <h1>לגלות. ללמוד. להתפלל.<br/><span>אוצר ישראל.</span></h1>
+          <p>מאגר יהודי פתוח שמחבר תנ״ך, חז״ל, הלכה, תפילה, מחשבה ופרשנות למרחב לימוד אחד.</p>
+          <form className="searchbox" onSubmit={runSearch}><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="חפש פסוק, ביטוי, ספר או נושא..."/><button>חיפוש</button></form>
+          {stats&&<div className="stats"><div><BarChart3/><b>{stats.works.toLocaleString()}</b><span>ספרים</span></div><div><ScrollText/><b>{stats.segments.toLocaleString()}</b><span>קטעי טקסט</span></div><div><Library/><b>{stats.categories.length}</b><span>קטגוריות</span></div></div>}
+        </section>
+
+        <section className="section" id="library">
+          <div className="sectionHead"><div><span>הספרייה</span><h2>פתח את ארון הספרים</h2></div></div>
+          <div className="grid">{homeCategories.map(([key,title,desc])=><button key={key} className="category" onClick={()=>key==='tanakh'&&setView('tanakh')} disabled={key!=='tanakh'}><BookOpen/><b>{title}</b><span>{desc}</span>{key==='tanakh'?<small>פתוח לקריאה</small>:<small>בהמשך</small>}</button>)}</div>
+        </section>
+
+        <section className="features"><div><ScrollText/><b>מקור ורישיון לכל טקסט</b><span>כל מהדורה נשמרת עם מקור שימוש ברור.</span></div><div><Search/><b>חיפוש עברי מנורמל</b><span>חיפוש גם בטקסט מנוקד ובכתיב משתנה.</span></div><div><Library/><b>מבנה שמוכן לגדול</b><span>מתוכנן מראש לארון ספרים יהודי רחב.</span></div></section>
+      </>}
+
+      {view==='search'&&<section className="page">
+        <div className="pageTitle"><span>חיפוש</span><h1>חיפוש באוצר ישראל</h1></div>
+        <form className="searchbox compact" onSubmit={runSearch}><Search/><input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="מה תרצה למצוא?"/><button>חיפוש</button></form>
+        {busy?<div className="empty">מחפש…</div>:hits.length?<div className="results">{hits.map((h,i)=><div className="resultCard" key={i}><b>{h.work_title}</b><small>{h.ref}</small><p>{h.text}</p></div>)}</div>:q?<div className="empty">לא נמצאו תוצאות.</div>:<div className="empty"><Search/><b>חיפוש בכל ארון הספרים</b><span>כתוב לפחות שתי אותיות כדי להתחיל.</span></div>}
       </section>}
 
       {view==='tanakh'&&<section className="page">
@@ -153,6 +189,6 @@ export default function App(){
         {busy?<div className="empty">טוען את הספר…</div>:<article className="fullBook">{chapterGroups.map(([chapter,chapterVerses])=><section className="bookChapter" key={chapter}><h2>פרק {heNumber(chapter)}</h2><div className="verses">{chapterVerses.map(v=><p key={v.id}><sup>{heNumber(v.verse)}</sup>{v.text}</p>)}</div></section>)}</article>}
       </section>}
     </main>
-    <footer>אוצר ישראל · תורה מנוקדת ומסודרת לפי ספר, פרשה, פרק ופסוק</footer>
+    <footer>אוצר ישראל · ארון הספרים היהודי</footer>
   </div>
 }
