@@ -1,0 +1,6 @@
+.prophetsGrid{grid-template-columns:repeat(4,1fr)}
+.chapterIndex{display:grid;grid-template-columns:repeat(8,1fr);gap:9px}.chapterIndex button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:11px;padding:12px 8px}.chapterIndex button:hover{border-color:var(--accent);transform:translateY(-1px)}
+.breadcrumbs>span{display:flex;align-items:center;gap:7px}
+@media(max-width:900px){.prophetsGrid{grid-template-columns:repeat(3,1fr)}.chapterIndex{grid-template-columns:repeat(6,1fr)}}
+@media(max-width:800px){.prophetsGrid{grid-template-columns:repeat(2,1fr)}.chapterIndex{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:520px){.prophetsGrid{grid-template-columns:1fr}.chapterIndex{grid-template-columns:repeat(3,1fr)}}
