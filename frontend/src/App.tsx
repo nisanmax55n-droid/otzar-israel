@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react'
 import {BarChart3,BookOpen,ChevronLeft,ChevronRight,Library,Moon,Search,ScrollText,Sparkles,Sun} from 'lucide-react'
 import {api,SearchHit,Stats,TorahBook,TorahParasha,TorahVerse} from './services/api'
+import './home.css'
 
 type View='home'|'tanakh'|'torah'|'book'|'parasha'|'bookView'|'search'
 
