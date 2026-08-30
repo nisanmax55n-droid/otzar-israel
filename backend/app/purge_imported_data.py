@@ -4,6 +4,7 @@ from app.core.db import SessionLocal
 from app.models import TextSegment, TextVersion, Work
 
 
+# One-shot production cleanup utility. Keeps the schema and application intact.
 def main() -> None:
     db = SessionLocal()
     try:
