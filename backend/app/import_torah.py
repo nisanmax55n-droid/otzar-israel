@@ -1,7 +1,7 @@
 from app.core.db import SessionLocal
 from app.services.torah_importer import TorahImporter
 
-
+# One-shot production task: import only the five books of the Torah.
 def main() -> None:
     db = SessionLocal()
     try:
