@@ -2,6 +2,7 @@ from app.core.db import SessionLocal
 from app.services.mishnah_importer import MishnahImporter
 
 
+# One-shot Railway worker for the approved Mishnah import pulse.
 def main() -> None:
     db = SessionLocal()
     try:
