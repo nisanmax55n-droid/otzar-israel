@@ -12,6 +12,9 @@ export type TorahParasha={id:number;title_he:string;title_en:string;order:number
 export type TorahVerse={id:number;chapter:number;verse:number;text:string;ref:string}
 export type NeviimVerse=TorahVerse
 export type KetuvimVerse=TorahVerse
+export type MishnahSeder={id:number;slug:string;title_he:string;title_en:string;order:number;tractate_count:number}
+export type MishnahTractate={id:number;slug:string;title_he:string;title_en:string;order:number;chapter_count:number;source_name:string;license:string}
+export type MishnahUnit={id:number;chapter:number;mishnah:number;text:string;ref:string}
 
 const BASE=(import.meta.env.VITE_API_URL||(import.meta.env.PROD?'':'http://localhost:8000')).replace(/\/$/,'')
 async function get<T>(path:string):Promise<T>{const r=await fetch(`${BASE}${path}`);if(!r.ok)throw new Error(await r.text());return r.json()}
@@ -33,5 +36,9 @@ neviimChapter:(slug:string,chapter:number)=>get<NeviimVerse[]>(`/api/v1/neviim/b
 neviimBookView:(slug:string)=>get<NeviimVerse[]>(`/api/v1/neviim/books/${slug}/book-view`),
 ketuvimBooks:()=>get<KetuvimBook[]>(`/api/v1/ketuvim/books`),
 ketuvimChapter:(slug:string,chapter:number)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug}/chapters/${chapter}`),
-ketuvimBookView:(slug:string)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug}/book-view`)
+ketuvimBookView:(slug:string)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug}/book-view`),
+mishnahSedarim:()=>get<MishnahSeder[]>(`/api/v1/mishnah/sedarim`),
+mishnahTractates:(sederSlug:string)=>get<MishnahTractate[]>(`/api/v1/mishnah/sedarim/${sederSlug}/tractates`),
+mishnahChapter:(slug:string,chapter:number)=>get<MishnahUnit[]>(`/api/v1/mishnah/tractates/${slug}/chapters/${chapter}`),
+mishnahTractateView:(slug:string)=>get<MishnahUnit[]>(`/api/v1/mishnah/tractates/${slug}/book-view`)
 }
