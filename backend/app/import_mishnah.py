@@ -2,7 +2,7 @@ from app.core.db import SessionLocal
 from app.services.mishnah_importer import MishnahImporter
 
 
-# One-shot Railway worker for approved content import pulses; production smoke checks reuse this service only temporarily.
+# One-shot Railway worker for approved content import pulses; production smoke checks may reuse this service temporarily.
 def main() -> None:
     db = SessionLocal()
     try:
