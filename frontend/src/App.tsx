@@ -11,9 +11,12 @@ const homeCategories=[
 
 function heNumber(n:number){
   if(n<=0)return String(n)
-  const ones=['','א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ז׳','ח׳','ט׳'];const tens=['','י׳','כ׳','ל׳','מ׳','נ׳','ס׳','ע׳','פ׳','צ׳']
-  if(n<10)return ones[n];if(n===15)return 'ט״ו';if(n===16)return 'ט״ז';if(n<20)return `י״${ones[n-10].replace('׳','')}`
-  const t=Math.floor(n/10),o=n%10;if(!o)return tens[t];return `${tens[t].replace('׳','')}״${ones[o].replace('׳','')}`
+  const parts:[number,string][]=[[400,'ת'],[300,'ש'],[200,'ר'],[100,'ק'],[90,'צ'],[80,'פ'],[70,'ע'],[60,'ס'],[50,'נ'],[40,'מ'],[30,'ל'],[20,'כ'],[10,'י'],[9,'ט'],[8,'ח'],[7,'ז'],[6,'ו'],[5,'ה'],[4,'ד'],[3,'ג'],[2,'ב'],[1,'א']]
+  let value=n;let out=''
+  while(value>=400){out+='ת';value-=400}
+  if(value===15){out+='טו';value=0}else if(value===16){out+='טז';value=0}else{for(const [v,l] of parts){if(v>=400)continue;while(value>=v){out+=l;value-=v}}}
+  if(out.length===1)return `${out}׳`
+  return `${out.slice(0,-1)}״${out.slice(-1)}`
 }
 
 export default function App(){
