@@ -40,6 +40,18 @@ def _allowed_license(value: Any) -> str | None:
     return None
 
 
+def _is_base_talmud_record(tradition: str, title: str, categories: list[Any]) -> bool:
+    normalized_categories = {str(category).strip().lower() for category in categories}
+    lowered_title = title.strip().lower()
+    if "commentary" in normalized_categories:
+        return False
+    if " on " in lowered_title:
+        return False
+    if tradition == "yerushalmi" and not lowered_title.startswith("jerusalem talmud "):
+        return False
+    return True
+
+
 def _flatten_strings(node: Any, path: tuple[int, ...] = ()) -> Iterable[tuple[tuple[int, ...], str]]:
     if isinstance(node, str):
         cleaned = node.strip()
@@ -105,6 +117,8 @@ class TalmudImporter:
             if "Talmud" not in categories or sefaria_category not in categories:
                 continue
             if not record.get("json_url") or not title:
+                continue
+            if not _is_base_talmud_record(tradition, title, categories):
                 continue
             # A merged export can combine differently licensed versions and may have no license field.
             # Otsar Israel therefore imports only a concrete version whose own JSON declares an approved license.
