@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models import (
+    KetuvimBook,
+    KetuvimVerse,
     NeviimBook,
     NeviimVerse,
     TextSegment,
@@ -30,22 +32,22 @@ def stats(db: Session = Depends(get_db)):
     works_count = db.scalar(select(func.count(Work.id))) or 0
     torah_books = db.scalar(select(func.count(TorahBook.id))) or 0
     neviim_books = db.scalar(select(func.count(NeviimBook.id))) or 0
+    ketuvim_books = db.scalar(select(func.count(KetuvimBook.id))) or 0
     versions_count = db.scalar(select(func.count(TextVersion.id))) or 0
     segments_count = db.scalar(select(func.count(TextSegment.id))) or 0
     torah_verses = db.scalar(select(func.count(TorahVerse.id))) or 0
     neviim_verses = db.scalar(select(func.count(NeviimVerse.id))) or 0
+    ketuvim_verses = db.scalar(select(func.count(KetuvimVerse.id))) or 0
     verified_versions = db.scalar(select(func.count(TextVersion.id)).where(TextVersion.license_verified.is_(True))) or 0
-    categories_rows = db.execute(
-        select(Work.category, func.count(Work.id)).group_by(Work.category).order_by(func.count(Work.id).desc(), Work.category)
-    ).all()
+    categories_rows = db.execute(select(Work.category, func.count(Work.id)).group_by(Work.category).order_by(func.count(Work.id).desc(), Work.category)).all()
     categories = [{"name": name, "count": count} for name, count in categories_rows]
-    tanakh_count = torah_books + neviim_books
+    tanakh_count = torah_books + neviim_books + ketuvim_books
     if tanakh_count:
         categories.insert(0, {"name": "Tanakh", "count": tanakh_count})
     return {
         "works": works_count + tanakh_count,
         "versions": versions_count,
-        "segments": segments_count + torah_verses + neviim_verses,
+        "segments": segments_count + torah_verses + neviim_verses + ketuvim_verses,
         "verified_versions": verified_versions,
         "categories": categories,
     }
@@ -55,7 +57,7 @@ def stats(db: Session = Depends(get_db)):
 def categories(db: Session = Depends(get_db)):
     rows = db.execute(select(Work.category, func.count(Work.id)).group_by(Work.category).order_by(Work.category)).all()
     result = [{"name": name, "count": count} for name, count in rows]
-    tanakh_count = (db.scalar(select(func.count(TorahBook.id))) or 0) + (db.scalar(select(func.count(NeviimBook.id))) or 0)
+    tanakh_count = ((db.scalar(select(func.count(TorahBook.id))) or 0) + (db.scalar(select(func.count(NeviimBook.id))) or 0) + (db.scalar(select(func.count(KetuvimBook.id))) or 0))
     if tanakh_count:
         result.insert(0, {"name": "Tanakh", "count": tanakh_count})
     return result
@@ -139,6 +141,35 @@ def neviim_chapter(slug: str, chapter: int, db: Session = Depends(get_db)):
 def neviim_book_view(slug: str, db: Session = Depends(get_db)):
     book = _neviim_book_or_404(slug, db)
     verses = list(db.scalars(select(NeviimVerse).where(NeviimVerse.book_id == book.id).order_by(NeviimVerse.chapter, NeviimVerse.verse)).all())
+    return [{"id":v.id,"chapter":v.chapter,"verse":v.verse,"text":v.text_nikkud,"ref":v.sefaria_ref} for v in verses]
+
+
+@router.get("/ketuvim/books")
+def ketuvim_books(db: Session = Depends(get_db)):
+    books = list(db.scalars(select(KetuvimBook).order_by(KetuvimBook.book_order)).all())
+    return [{"id":b.id,"slug":b.slug,"title_he":b.title_he,"title_en":b.title_en,"book_order":b.book_order,"chapter_count":b.chapter_count,"source_name":b.source_name,"license":b.license} for b in books]
+
+
+def _ketuvim_book_or_404(slug: str, db: Session) -> KetuvimBook:
+    book = db.scalar(select(KetuvimBook).where(KetuvimBook.slug == slug))
+    if not book:
+        raise HTTPException(404, "ספר הכתובים עדיין לא נטען")
+    return book
+
+
+@router.get("/ketuvim/books/{slug}/chapters/{chapter}")
+def ketuvim_chapter(slug: str, chapter: int, db: Session = Depends(get_db)):
+    book = _ketuvim_book_or_404(slug, db)
+    if chapter < 1 or chapter > book.chapter_count:
+        raise HTTPException(404, "פרק לא קיים")
+    verses = list(db.scalars(select(KetuvimVerse).where(KetuvimVerse.book_id == book.id, KetuvimVerse.chapter == chapter).order_by(KetuvimVerse.verse)).all())
+    return [{"id":v.id,"chapter":v.chapter,"verse":v.verse,"text":v.text_nikkud,"ref":v.sefaria_ref} for v in verses]
+
+
+@router.get("/ketuvim/books/{slug}/book-view")
+def ketuvim_book_view(slug: str, db: Session = Depends(get_db)):
+    book = _ketuvim_book_or_404(slug, db)
+    verses = list(db.scalars(select(KetuvimVerse).where(KetuvimVerse.book_id == book.id).order_by(KetuvimVerse.chapter, KetuvimVerse.verse)).all())
     return [{"id":v.id,"chapter":v.chapter,"verse":v.verse,"text":v.text_nikkud,"ref":v.sefaria_ref} for v in verses]
 
 
