@@ -4,14 +4,13 @@ import re
 from typing import Any, Iterable
 
 import httpx
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.talmud import TalmudSegment, TalmudTractate
 from app.services.text_utils import normalize_hebrew
 
 BOOKS_INDEX = "https://raw.githubusercontent.com/Sefaria/Sefaria-Export/master/books.json"
-SOURCE_NAME = "Sefaria Export - Hebrew merged"
 ALLOWED_LICENSE_PREFIXES = ("Public Domain", "CC0", "CC-BY", "CC-BY-SA")
 TRADITIONS = {"bavli": "Bavli", "yerushalmi": "Yerushalmi"}
 SEDER_ORDER = {
@@ -67,6 +66,18 @@ def _section_ref(title: str, tradition: str, section: int, path: tuple[int, ...]
     return f"{base}:{suffix}" if suffix else base
 
 
+def _he_title(payload: dict[str, Any], fallback: str) -> str:
+    direct = payload.get("heTitle")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    variants = payload.get("heTitleVariants") or payload.get("titleVariants") or []
+    if isinstance(variants, list):
+        for value in variants:
+            if isinstance(value, str) and value.strip() and any("א" <= ch <= "ת" for ch in value):
+                return value.strip()
+    return fallback
+
+
 class TalmudImporter:
     def __init__(self, db: Session):
         self.db = db
@@ -81,34 +92,45 @@ class TalmudImporter:
         response.raise_for_status()
         payload = response.json()
         books = payload.get("books", []) if isinstance(payload, dict) else []
-        records: list[dict[str, Any]] = []
+        grouped: dict[str, dict[str, Any]] = {}
+
         for record in books:
             if not isinstance(record, dict):
                 continue
             categories = record.get("categories") or []
             language = str(record.get("language", "")).lower()
+            title = str(record.get("title", "")).strip()
             if language not in {"hebrew", "he"}:
-                continue
-            if record.get("versionTitle") != "merged":
                 continue
             if "Talmud" not in categories or sefaria_category not in categories:
                 continue
-            if not record.get("json_url") or not record.get("title"):
+            if not record.get("json_url") or not title:
                 continue
-            records.append(record)
+            # A merged export can combine differently licensed versions and may have no license field.
+            # Otsar Israel therefore imports only a concrete version whose own JSON declares an approved license.
+            if str(record.get("versionTitle", "")).strip().lower() == "merged":
+                continue
+            group = grouped.setdefault(title, {"title": title, "categories": categories, "candidates": []})
+            group["candidates"].append(record)
 
-        def sort_key(record: dict[str, Any]) -> tuple[int, str]:
-            categories = record.get("categories") or []
+        def sort_key(group: dict[str, Any]) -> tuple[int, str]:
+            categories = group.get("categories") or []
             seder = next((c for c in categories if isinstance(c, str) and c.startswith("Seder ")), "")
-            return (SEDER_ORDER.get(seder, 99), str(record.get("title", "")))
+            return (SEDER_ORDER.get(seder, 99), str(group.get("title", "")))
 
-        return sorted(records, key=sort_key)
+        records = sorted(grouped.values(), key=sort_key)
+        for group in records:
+            group["candidates"] = sorted(
+                group["candidates"],
+                key=lambda r: ("wikisource" not in str(r.get("versionTitle", "")).lower(), str(r.get("versionTitle", ""))),
+            )
+        return records
 
     def import_tradition(self, tradition: str, replace: bool = True, max_tractates: int | None = None) -> dict[str, Any]:
         if tradition not in TRADITIONS:
             raise ValueError("tradition must be bavli or yerushalmi")
         if replace:
-            ids = [row.id for row in self.db.query(TalmudTractate.id).filter(TalmudTractate.tradition == tradition).all()]
+            ids = list(self.db.scalars(select(TalmudTractate.id).where(TalmudTractate.tradition == tradition)).all())
             if ids:
                 self.db.execute(delete(TalmudSegment).where(TalmudSegment.tractate_id.in_(ids)))
             self.db.execute(delete(TalmudTractate).where(TalmudTractate.tradition == tradition))
@@ -136,25 +158,49 @@ class TalmudImporter:
             self.close()
 
     def import_tractate(self, tradition: str, order: int, record: dict[str, Any]) -> dict[str, Any]:
-        source_url = str(record["json_url"])
-        response = self.client.get(source_url)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            return {"status": "skipped", "reason": "unexpected JSON structure"}
+        title_en = str(record.get("title", "")).strip()
+        candidates = record.get("candidates") or []
+        rejection_reasons: list[str] = []
 
-        license_name = _allowed_license(payload.get("license"))
-        if not license_name:
-            return {"status": "skipped", "reason": f"license not approved: {payload.get('license')!r}"}
+        chosen_payload: dict[str, Any] | None = None
+        chosen_record: dict[str, Any] | None = None
+        chosen_license: str | None = None
+        for candidate in candidates:
+            source_url = str(candidate.get("json_url", ""))
+            version_title = str(candidate.get("versionTitle", "")).strip()
+            try:
+                response = self.client.get(source_url)
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                rejection_reasons.append(f"{version_title}: download failed ({type(exc).__name__})")
+                continue
+            if not isinstance(payload, dict):
+                rejection_reasons.append(f"{version_title}: unexpected JSON structure")
+                continue
+            license_name = _allowed_license(payload.get("license"))
+            if not license_name:
+                rejection_reasons.append(f"{version_title}: license not approved ({payload.get('license')!r})")
+                continue
+            text = payload.get("text")
+            if not isinstance(text, list) or not text:
+                rejection_reasons.append(f"{version_title}: missing text")
+                continue
+            chosen_payload = payload
+            chosen_record = candidate
+            chosen_license = license_name
+            break
 
-        text = payload.get("text")
-        if not isinstance(text, list) or not text:
-            return {"status": "skipped", "reason": "missing text"}
+        if not chosen_payload or not chosen_record or not chosen_license:
+            reason = "; ".join(rejection_reasons[:6]) or "no concrete Hebrew versions found"
+            return {"status": "skipped", "reason": reason}
 
-        title_en = str(payload.get("title") or record.get("title") or "").strip()
-        title_he = str(payload.get("heTitle") or payload.get("titleVariants", [""])[0] or title_en).strip()
+        text = chosen_payload["text"]
+        title_he = _he_title(chosen_payload, title_en)
         categories = record.get("categories") or []
         seder_name = next((str(c).replace("Seder ", "", 1) for c in categories if isinstance(c, str) and c.startswith("Seder ")), "")
+        version_title = str(chosen_record.get("versionTitle", "")).strip() or "unnamed version"
+        source_url = str(chosen_record["json_url"])
         tractate = TalmudTractate(
             tradition=tradition,
             seder_name=seder_name,
@@ -163,9 +209,9 @@ class TalmudImporter:
             title_en=title_en,
             tractate_order=order,
             section_count=len(text),
-            source_name=SOURCE_NAME,
+            source_name=f"Sefaria Export - {version_title}",
             source_url=source_url,
-            license=license_name,
+            license=chosen_license,
             license_verified=True,
         )
         self.db.add(tractate)
@@ -191,7 +237,8 @@ class TalmudImporter:
         return {
             "status": "imported",
             "title": title_he,
+            "version": version_title,
             "sections": len(text),
             "segments": segment_count,
-            "license": license_name,
+            "license": chosen_license,
         }
