@@ -7,9 +7,11 @@ export type SectionInfo={level1:number;count:number}
 export type TanakhBook={id:number;slug:string;title_he:string;title_en:string;book_order:number;chapter_count:number;source_name:string;license:string}
 export type TorahBook=TanakhBook
 export type NeviimBook=TanakhBook
+export type KetuvimBook=TanakhBook
 export type TorahParasha={id:number;title_he:string;title_en:string;order:number;whole_ref:string;start_chapter:number;start_verse:number;end_chapter:number;end_verse:number;chapters:number[]}
 export type TorahVerse={id:number;chapter:number;verse:number;text:string;ref:string}
 export type NeviimVerse=TorahVerse
+export type KetuvimVerse=TorahVerse
 
 const BASE=(import.meta.env.VITE_API_URL||(import.meta.env.PROD?'':'http://localhost:8000')).replace(/\/$/,'')
 async function get<T>(path:string):Promise<T>{const r=await fetch(`${BASE}${path}`);if(!r.ok)throw new Error(await r.text());return r.json()}
@@ -28,5 +30,8 @@ torahParashaChapter:(parashaId:number,chapter:number)=>get<TorahVerse[]>(`/api/v
 torahBookView:(slug:string)=>get<TorahVerse[]>(`/api/v1/torah/books/${slug}/book-view`),
 neviimBooks:()=>get<NeviimBook[]>(`/api/v1/neviim/books`),
 neviimChapter:(slug:string,chapter:number)=>get<NeviimVerse[]>(`/api/v1/neviim/books/${slug}/chapters/${chapter}`),
-neviimBookView:(slug:string)=>get<NeviimVerse[]>(`/api/v1/neviim/books/${slug}/book-view`)
+neviimBookView:(slug:string)=>get<NeviimVerse[]>(`/api/v1/neviim/books/${slug}/book-view`),
+ketuvimBooks:()=>get<KetuvimBook[]>(`/api/v1/ketuvim/books`),
+ketuvimChapter:(slug:string,chapter:number)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug}/chapters/${chapter}`),
+ketuvimBookView:(slug:string)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug}/book-view`)
 }
