@@ -15,6 +15,10 @@ export type KetuvimVerse=TorahVerse
 export type MishnahSeder={id:number;slug:string;title_he:string;title_en:string;order:number;tractate_count:number}
 export type MishnahTractate={id:number;slug:string;title_he:string;title_en:string;order:number;chapter_count:number;source_name:string;license:string}
 export type MishnahUnit={id:number;chapter:number;mishnah:number;text:string;ref:string}
+export type TalmudTradition='bavli'|'yerushalmi'
+export type TalmudTractate={id:number;tradition:TalmudTradition;seder_name:string;slug:string;title_he:string;title_en:string;order:number;section_count:number;source_name:string;source_url:string;license:string;license_verified:boolean}
+export type TalmudSectionInfo={index:number;label:string;count:number}
+export type TalmudSegment={id:number;section:number;position:number;path:string;text:string;ref:string}
 
 const BASE=(import.meta.env.VITE_API_URL||(import.meta.env.PROD?'':'http://localhost:8000')).replace(/\/$/,'')
 async function get<T>(path:string):Promise<T>{const r=await fetch(`${BASE}${path}`);if(!r.ok)throw new Error(await r.text());return r.json()}
@@ -40,5 +44,9 @@ ketuvimBookView:(slug:string)=>get<KetuvimVerse[]>(`/api/v1/ketuvim/books/${slug
 mishnahSedarim:()=>get<MishnahSeder[]>(`/api/v1/mishnah/sedarim`),
 mishnahTractates:(sederSlug:string)=>get<MishnahTractate[]>(`/api/v1/mishnah/sedarim/${sederSlug}/tractates`),
 mishnahChapter:(slug:string,chapter:number)=>get<MishnahUnit[]>(`/api/v1/mishnah/tractates/${slug}/chapters/${chapter}`),
-mishnahTractateView:(slug:string)=>get<MishnahUnit[]>(`/api/v1/mishnah/tractates/${slug}/book-view`)
+mishnahTractateView:(slug:string)=>get<MishnahUnit[]>(`/api/v1/mishnah/tractates/${slug}/book-view`),
+talmudTractates:(tradition:TalmudTradition)=>get<TalmudTractate[]>(`/api/v1/talmud/${tradition}/tractates`),
+talmudSections:(tradition:TalmudTradition,slug:string)=>get<TalmudSectionInfo[]>(`/api/v1/talmud/${tradition}/tractates/${slug}/sections`),
+talmudSection:(tradition:TalmudTradition,slug:string,section:number)=>get<TalmudSegment[]>(`/api/v1/talmud/${tradition}/tractates/${slug}/sections/${section}`),
+talmudBookView:(tradition:TalmudTradition,slug:string)=>get<TalmudSegment[]>(`/api/v1/talmud/${tradition}/tractates/${slug}/book-view`)
 }
