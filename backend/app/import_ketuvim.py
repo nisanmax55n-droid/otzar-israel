@@ -1,7 +1,7 @@
 from app.core.db import SessionLocal
 from app.services.ketuvim_importer import KetuvimImporter
 
-
+# Focused one-time production import trigger for Ketuvim.
 def main() -> None:
     db = SessionLocal()
     try:
